@@ -1,6 +1,6 @@
 # hash-calculator
 
-Calculate:
-- SHA256 hash
-- md5 hash
-- sha1 hash
+Python tool to calculate hash with many algorithms like:
+ - sha256
+ - md5
+ - sha1
