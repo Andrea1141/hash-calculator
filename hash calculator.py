@@ -1,4 +1,4 @@
-import tkinter, hashlib, subprocess
+import tkinter, hashlib
 
 root = tkinter.Tk()
 root.title("Hash Calculator")
@@ -7,7 +7,7 @@ label = tkinter.Label(text="Write the string to hash")
 label.pack()
 
 option = tkinter.StringVar()
-option.set("blake2b")
+option.set("sha224")
 string = tkinter.StringVar()
 
 entry = tkinter.Entry(root, textvariable=string, width=150, justify="center")
@@ -23,20 +23,12 @@ def callback(*args):
     result = eval(command)
     hexdigest.set(result.hexdigest())
 
-def copy():
-    cmd='echo '+hexdigest.get().strip()+'|clip'
-    return subprocess.check_call(cmd, shell=True)
-
-
 string.trace_add("write", callback)
 option.trace_add("write", callback)
 
-algorithms = ['blake2b', 'blake2s', 'md5', 'sha1', 'sha224', 'sha256', 'sha384', 'sha3_224', 'sha3_256', 'sha3_384', 'sha3_512', 'sha512']
+algorithms = ["sha224", "sha1", "blake2s", "sha3_384", "sha256", "blake2b", "sha384", "sha3_256", "sha3_512", "md5", "sha512", "sha3_224"]
 menu = tkinter.OptionMenu(root, option, *algorithms)
 menu.pack()
 callback()
-
-copy_button = tkinter.Button(root, text="Copy to Clipboard", command=copy)
-copy_button.pack()
 
 root.mainloop()
