@@ -1,8 +1,16 @@
-import tkinter, hashlib, subprocess
+import tkinter, tkinter.messagebox, hashlib, subprocess
 
 window = tkinter.Tk()
 window.title("Hash Calculator")
 window.geometry("1000x500")
+
+def display_msg():
+    if tkinter.messagebox.askyesno(title="Exit", message="Do you want to quit?"):
+        window.destroy()
+        exit()
+
+
+window.protocol("WM_DELETE_WINDOW", display_msg)
 
 option = tkinter.StringVar(value="blake2b")
 string = tkinter.StringVar()
@@ -20,22 +28,34 @@ label.pack(pady=5)
 entry = tkinter.Entry(window, textvariable=string, width=150, justify="center")
 entry.pack(pady=5)
 
-def hash(*args):
+def auto_hash(*a):
     encoded_string = string.get().encode()
     command = "hashlib." + option.get() + "(encoded_string)"
     result = eval(command)
     hexdigest.set(result.hexdigest())
 
-hash_button = tkinter.Button(window, text="Hash", command=hash(""))
+def hash():
+    encoded_string = string.get().encode()
+    command = "hashlib." + option.get() + "(encoded_string)"
+    result = eval(command)
+    hexdigest.set(result.hexdigest())
+
+hash_button = tkinter.Button(window, text="Hash", command=hash)
 hash_button.pack(pady=5)
 
 
 def check_auto_update():
-    s = string.trace_add("write", hash)
-    opt = option.trace_add("write", hash)
-    if auto_update == False:
+    if string.trace_info() == []:
+        global s 
+        s = string.trace_add("write", auto_hash)
+        global opt 
+        opt = option.trace_add("write", auto_hash)
+    if auto_update.get() == False:
         string.trace_remove("write", s)
         option.trace_remove("write", opt)
+    else:
+        hash()
+        
 
 check_auto_update()
 check = tkinter.Checkbutton(window, text="Auto Update", variable=auto_update, command=check_auto_update)
