@@ -1,8 +1,8 @@
-import tkinter, tkinter.messagebox, tkinter.filedialog, hashlib, subprocess
+import tkinter, tkinter.messagebox, tkinter.filedialog, tkinter.ttk, hashlib, subprocess, os
 
 window = tkinter.Tk()
 window.title("Hash Calculator")
-window.geometry("1000x500")
+window.geometry("1000x600")
 window.config(bg="#f0f0f0")
 window.columnconfigure(0, weight=1)
 window.columnconfigure(1, weight=1)
@@ -28,19 +28,19 @@ window.protocol("WM_DELETE_WINDOW", display_msg)
 
 def auto_hash(*a):
     encoded_string = string.get().encode()
-    command = "hashlib." + option.get() + "(encoded_string)"
+    hasher = hashlib.new(option.get())
     try:
-        result = eval(command)
-        hexdigest.set(result.hexdigest())
+        hasher.update(encoded_string)
+        hexdigest.set(hasher.hexdigest())
     except Exception as e:
         show_message("Errore: " + str(e), color="red")
 
 def hash():
     encoded_string = string.get().encode()
-    command = "hashlib." + option.get() + "(encoded_string)"
+    hasher = hashlib.new(option.get())
     try:
-        result = eval(command)
-        hexdigest.set(result.hexdigest())
+        hasher.update(encoded_string)
+        hexdigest.set(hasher.hexdigest())
     except Exception as e:
         show_message("Errore: " + str(e), color="red")
 
@@ -49,11 +49,22 @@ def hash_file():
     if not file_path:
         return
     try:
+        file_size = os.path.getsize(file_path)
+        progress_bar = tkinter.ttk.Progressbar(window, orient="horizontal", length=400, mode="determinate")
+        progress_bar.grid(row=10, column=0, columnspan=2, pady=10)
         with open(file_path, "rb") as file:
-            file_content = file.read()
-            result = eval("hashlib." + option.get() + "(file_content)")
-            hexdigest.set(result.hexdigest())
+            hasher = hashlib.new(option.get())
+            chunk_size = 4096
+            file_content = file.read(chunk_size)
+            read_bytes = 0
+            while file_content:
+                hasher.update(file_content)
+                read_bytes += len(file_content)
+                update_progress(progress_bar, read_bytes, file_size)
+                file_content = file.read(chunk_size)
+            hexdigest.set(hasher.hexdigest())
             show_message("Calculated hash for the file: " + file_path)
+            window.after(3000, lambda: progress_bar.destroy())
     except Exception as e:
         show_message("Error: " + str(e), color="red")
 
@@ -73,8 +84,6 @@ def check_auto_update():
     if not auto_update.get():
         string.trace_remove("write", s)
         option.trace_remove("write", opt)
-    else:
-        hash()
 
 def copy():
     cmd = 'echo '+ hexdigest.get().strip() +'|clip'
@@ -91,8 +100,13 @@ def show_message(msg, color="green"):
     if message_label:
         message_label.destroy()
     message_label = tkinter.Label(window, text=msg, fg=color, bg="#f0f0f0", font=message_font)
-    message_label.grid(row=10, column=0, columnspan=2, pady=5)
+    message_label.grid(row=11, column=0, columnspan=2, pady=5)
     window.after(3000, lambda: message_label.destroy())
+
+def update_progress(progress_bar, current, total):
+    percentage = (current / total) * 100
+    progress_bar["value"] = percentage
+    window.update_idletasks()
 
 title = tkinter.Label(text="HASH CALCULATOR", font=title_font, bg="#f0f0f0")
 title.grid(row=0, column=0, columnspan=2, pady=20)
@@ -100,7 +114,7 @@ title.grid(row=0, column=0, columnspan=2, pady=20)
 label = tkinter.Label(text="Write the string to hash", font=label_font, bg="#f0f0f0")
 label.grid(row=1, column=0, columnspan=2, pady=10)
 
-entry = tkinter.Entry(window, textvariable=string, width=150, justify="center", font={"Roboto", 12})
+entry = tkinter.Entry(window, textvariable=string, width=100, justify="center", font={"Roboto", 12})
 entry.grid(row=2, column=0, columnspan=2, pady=10)
 
 clear_button = tkinter.Button(window, text="Clear", command=clear_field, font=button_font, bg="#f4b084")
@@ -113,7 +127,7 @@ check_auto_update()
 check = tkinter.Checkbutton(window, text="Auto Update", variable=auto_update, command=check_auto_update, font=label_font, bg="#f0f0f0")
 check.grid(row=5, column=1, padx=10, pady=10, sticky="w")
 
-label = tkinter.Entry(text="", textvariable=hexdigest, width=150, justify="center", state="readonly", font=("Arial", 12))
+label = tkinter.Message(text="", textvariable=hexdigest, width=900, justify="center", font=("Arial", 12))
 label.grid(row=6, column=0, columnspan=2, pady=10)
 
 algorithms = ['blake2b', 'blake2s', 'md5', 'sha1', 'sha224', 'sha256', 'sha384', 'sha3_224', 'sha3_256', 'sha3_384', 'sha3_512', 'sha512']
