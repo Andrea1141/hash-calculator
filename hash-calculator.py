@@ -57,6 +57,13 @@ def hash_file():
     except Exception as e:
         show_message("Error: " + str(e), color="red")
 
+def save_to_file():
+    file_path = tkinter.filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Text files", "*.txt")])
+    if file_path:
+        with open(file_path, "w") as file:
+            file.write("Hash calculated:\n" + hexdigest.get())
+        show_message(f"Hash saved in " + file_path)
+
 def check_auto_update():
     if string.trace_info() == []:
         global s 
@@ -118,7 +125,10 @@ copy_button = tkinter.Button(window, text="Copy to Clipboard", command=copy, fon
 copy_button.grid(row=8, column=0, columnspan=2, pady=10)
 
 file_button = tkinter.Button(window, text="Hash File", command=hash_file, font=button_font, bg="#2196f3", fg="white")
-file_button.grid(row=9, column=0, columnspan=2, pady=10)
+file_button.grid(row=9, column=0, padx=50, pady=10, sticky="e")
+
+save_button = tkinter.Button(window, text="Save to File", command=save_to_file, font=button_font, bg="#2196f3", fg="white")
+save_button.grid(row=9, column=1, padx=10, pady=10, sticky="w")
 
 window.mainloop()
 
