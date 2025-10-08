@@ -1,8 +1,8 @@
-import tkinter, tkinter.messagebox, tkinter.filedialog, tkinter.ttk, hashlib, subprocess, os
+import tkinter, tkinter.messagebox, tkinter.filedialog, tkinter.ttk, hashlib, os, threading, time
 
 window = tkinter.Tk()
 window.title("Hash Calculator")
-window.geometry("1000x600")
+window.geometry("1000x700")
 window.config(bg="#f0f0f0")
 window.columnconfigure(0, weight=1)
 window.columnconfigure(1, weight=1)
@@ -18,6 +18,14 @@ button_font = ("Roboto", 10)
 message_font = ("Roboto", 10, "italic")
 
 message_label = None
+file_hash_thread = None
+file_hash_cancel = None
+file_progress_bar = None
+file_cancel_button = None
+file_progress_label = None
+file_hash_start_time = None
+file_progress_frame = None
+file_buttons_frame = None
 
 def display_msg():
     if tkinter.messagebox.askyesno(title="Exit", message="Do you want to quit?"):
@@ -44,51 +52,188 @@ def hash():
     except Exception as e:
         show_message("Errore: " + str(e), color="red")
 
-def hash_file():
+def start_file_hash():
+    global file_hash_thread, file_hash_cancel, file_progress_bar, file_cancel_button
     file_path = tkinter.filedialog.askopenfilename()
     if not file_path:
         return
+
+    if file_hash_thread and file_hash_thread.is_alive():
+        show_message("A file hashing job is already running", color="red")
+        return
+
     try:
         file_size = os.path.getsize(file_path)
-        progress_bar = tkinter.ttk.Progressbar(window, orient="horizontal", length=400, mode="determinate")
-        progress_bar.grid(row=10, column=0, columnspan=2, pady=10)
-        with open(file_path, "rb") as file:
-            hasher = hashlib.new(option.get())
-            chunk_size = 4096
-            file_content = file.read(chunk_size)
-            read_bytes = 0
-            while file_content:
-                hasher.update(file_content)
-                read_bytes += len(file_content)
-                update_progress(progress_bar, read_bytes, file_size)
-                file_content = file.read(chunk_size)
-            hexdigest.set(hasher.hexdigest())
-            show_message("Calculated hash for the file: " + file_path)
-            window.after(3000, lambda: progress_bar.destroy())
     except Exception as e:
-        show_message("Error: " + str(e), color="red")
+        show_message("Error accessing file: " + str(e), color="red")
+        return
+
+    # Create (or recreate) a centered progress frame that spans both columns
+    global file_progress_frame, file_progress_label, file_hash_start_time
+    if file_progress_frame:
+        try:
+            file_progress_frame.destroy()
+        except Exception:
+            pass
+    file_progress_frame = tkinter.Frame(window, bg="#f0f0f0")
+    file_progress_frame.grid(row=11, column=0, columnspan=2, pady=10)
+
+    file_progress_bar = tkinter.ttk.Progressbar(file_progress_frame, orient="horizontal", length=600, mode="determinate")
+    file_progress_bar.pack(side="left", padx=(10, 10))
+
+    if file_cancel_button:
+        try:
+            file_cancel_button.destroy()
+        except Exception:
+            pass
+    file_cancel_button = tkinter.Button(file_progress_frame, text="Cancel", command=lambda: cancel_file_hash(), font=button_font, bg="#f44336", fg="white")
+    file_cancel_button.pack(side="left", padx=(10, 10))
+
+    if file_progress_label:
+        try:
+            file_progress_label.destroy()
+        except Exception:
+            pass
+    file_progress_label = tkinter.Label(window, text="", font=message_font, bg="#f0f0f0")
+    file_progress_label.grid(row=12, column=0, columnspan=2, pady=(0, 10))
+
+    file_hash_cancel = threading.Event()
+
+    file_hash_start_time = time.time()
+    file_hash_thread = threading.Thread(target=_file_hash_worker, args=(file_path, file_size, file_progress_bar, file_hash_cancel), daemon=True)
+    file_hash_thread.start()
+
+
+def _file_hash_worker(file_path, file_size, progress_bar, cancel_event):
+    try:
+        hasher = hashlib.new(option.get())
+    except Exception as e:
+        window.after(0, lambda: show_message("Unsupported algorithm: " + str(e), color="red"))
+        return
+
+    try:
+        with open(file_path, "rb") as f:
+            chunk_size = 64 * 1024
+            read_bytes = 0
+            while True:
+                if cancel_event.is_set():
+                    window.after(0, lambda: show_message("Hashing canceled", color="red"))
+                    window.after(0, lambda: _destroy_file_progress_widgets())
+                    return
+                chunk = f.read(chunk_size)
+                if not chunk:
+                    break
+                hasher.update(chunk)
+                read_bytes += len(chunk)
+                window.after(0, lambda rb=read_bytes, fs=file_size, pb=progress_bar: update_progress(pb, rb, fs))
+                elapsed = max(1e-6, time.time() - file_hash_start_time)
+                speed = read_bytes / elapsed  # bytes/sec
+                remaining = max(0, file_size - read_bytes)
+                eta_seconds = int(remaining / max(1e-6, speed))
+                # format speed in MB/s and ETA as H:MM:SS
+                speed_text = f"{speed / (1024*1024):.2f} MB/s"
+                eta_text = time.strftime('%H:%M:%S', time.gmtime(eta_seconds))
+                window.after(0, lambda stext=speed_text, et=eta_text: _update_progress_label(stext, et))
+
+        digest = hasher.hexdigest()
+        window.after(0, lambda d=digest, fp=file_path: hexdigest.set(d))
+        window.after(0, lambda: show_message("Calculated hash for: " + file_path))
+    except Exception as e:
+        window.after(0, lambda: show_message("Error hashing file: " + str(e), color="red"))
+    finally:
+        window.after(1000, lambda: _destroy_file_progress_widgets())
+
+
+def _update_progress_label(speed_text, eta_text):
+    global file_progress_label
+    try:
+        if file_progress_label:
+            file_progress_label.config(text=f"{speed_text} — ETA: {eta_text}")
+    except Exception:
+        pass
+
+
+def cancel_file_hash():
+    global file_hash_cancel
+    if file_hash_cancel:
+        file_hash_cancel.set()
+
+
+
+def _destroy_file_progress_widgets():
+    global file_progress_bar, file_cancel_button, file_progress_label
+    try:
+        if file_progress_bar:
+            file_progress_bar.destroy()
+    except Exception:
+        pass
+    try:
+        if file_cancel_button:
+            file_cancel_button.destroy()
+    except Exception:
+        pass
+    try:
+        if file_progress_label:
+            file_progress_label.destroy()
+    except Exception:
+        pass
+    try:
+        if file_progress_frame:
+            file_progress_frame.destroy()
+    except Exception:
+        pass
+    file_progress_bar = None
+    file_cancel_button = None
+    file_progress_label = None
+    file_progress_frame = None
 
 def save_to_file():
     file_path = tkinter.filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Text files", "*.txt")])
     if file_path:
-        with open(file_path, "w") as file:
-            file.write("Hash calculated:\n" + hexdigest.get())
-        show_message(f"Hash saved in " + file_path)
+        try:
+            with open(file_path, "w", encoding="utf-8") as file:
+                file.write(f"Hash Calculator Results\nAlgorithm: {option.get()}\nInput: {string.get()}\nHash: {hexdigest.get()}\n")
+            show_message("Hash saved to " + file_path)
+        except Exception as e:
+            show_message("Error saving file: " + str(e), color="red")
 
 def check_auto_update():
-    if string.trace_info() == []:
-        global s 
-        s = string.trace_add("write", auto_hash)
-        global opt 
-        opt = option.trace_add("write", auto_hash)
-    if not auto_update.get():
-        string.trace_remove("write", s)
-        option.trace_remove("write", opt)
+    global s, opt
+    try:
+        s
+    except NameError:
+        s = None
+    try:
+        opt
+    except NameError:
+        opt = None
+
+    if auto_update.get():
+        if s is None:
+            s = string.trace_add("write", auto_hash)
+        if opt is None:
+            opt = option.trace_add("write", auto_hash)
+    else:
+        if s is not None:
+            try:
+                string.trace_remove("write", s)
+            except Exception:
+                pass
+            s = None
+        if opt is not None:
+            try:
+                option.trace_remove("write", opt)
+            except Exception:
+                pass
+            opt = None
 
 def copy():
-    cmd = 'echo '+ hexdigest.get().strip() +'|clip'
-    subprocess.check_call(cmd, shell=True)
-    show_message("Text copied to clipboard!")
+    try:
+        window.clipboard_clear()
+        window.clipboard_append(hexdigest.get().strip())
+        show_message("Text copied to clipboard!")
+    except Exception as e:
+        show_message("Error copying to clipboard: " + str(e), color="red")
 
 def clear_field():
     string.set("")
@@ -100,7 +245,7 @@ def show_message(msg, color="green"):
     if message_label:
         message_label.destroy()
     message_label = tkinter.Label(window, text=msg, fg=color, bg="#f0f0f0", font=message_font)
-    message_label.grid(row=11, column=0, columnspan=2, pady=5)
+    message_label.grid(row=14, column=0, columnspan=2, pady=5)
     window.after(3000, lambda: message_label.destroy())
 
 def update_progress(progress_bar, current, total):
@@ -114,7 +259,7 @@ title.grid(row=0, column=0, columnspan=2, pady=20)
 label = tkinter.Label(text="Write the string to hash", font=label_font, bg="#f0f0f0")
 label.grid(row=1, column=0, columnspan=2, pady=10)
 
-entry = tkinter.Entry(window, textvariable=string, width=100, justify="center", font={"Roboto", 12})
+entry = tkinter.Entry(window, textvariable=string, width=100, justify="center", font=("Roboto", 12))
 entry.grid(row=2, column=0, columnspan=2, pady=10)
 
 clear_button = tkinter.Button(window, text="Clear", command=clear_field, font=button_font, bg="#f4b084")
@@ -138,7 +283,7 @@ menu.grid(row=7, column=0, columnspan=2, pady=10)
 copy_button = tkinter.Button(window, text="Copy to Clipboard", command=copy, font=button_font, bg="#2196f3", fg="white")
 copy_button.grid(row=8, column=0, columnspan=2, pady=10)
 
-file_button = tkinter.Button(window, text="Hash File", command=hash_file, font=button_font, bg="#2196f3", fg="white")
+file_button = tkinter.Button(window, text="Hash File", command=start_file_hash, font=button_font, bg="#2196f3", fg="white")
 file_button.grid(row=9, column=0, padx=50, pady=10, sticky="e")
 
 save_button = tkinter.Button(window, text="Save to File", command=save_to_file, font=button_font, bg="#2196f3", fg="white")
