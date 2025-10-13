@@ -27,6 +27,9 @@ file_progress_label = None
 file_hash_start_time = None
 file_progress_frame = None
 file_buttons_frame = None
+history_entries = []
+history_listbox = None
+history_frame = None
 
 def display_msg():
     if tkinter.messagebox.askyesno(title="Exit", message="Do you want to quit?"):
@@ -55,6 +58,7 @@ def hash():
 
 def start_file_hash():
     global file_hash_thread, file_hash_cancel, file_progress_bar, file_cancel_button
+    _disable_main_buttons(True)
     file_path = tkinter.filedialog.askopenfilename()
     if not file_path:
         return
@@ -149,6 +153,7 @@ def start_file_verify(expected):
         return
 
 
+    _disable_main_buttons(True)
     if file_progress_frame:
         try:
             file_progress_frame.destroy()
@@ -181,6 +186,7 @@ def start_file_verify(expected):
     file_hash_start_time = time.time()
     file_hash_thread = threading.Thread(target=_file_verify_worker, args=(file_path, file_size, file_progress_bar, file_hash_cancel, expected), daemon=True)
     file_hash_thread.start()
+    _add_history_entry(f"START file hash: {os.path.basename(file_path)} | algo={option.get()}")
 
 
 def _file_verify_worker(file_path, file_size, progress_bar, cancel_event, expected):
@@ -216,13 +222,17 @@ def _file_verify_worker(file_path, file_size, progress_bar, cancel_event, expect
         digest = hasher.hexdigest().lower().strip()
         window.after(0, lambda d=digest: hexdigest.set(d))
         match = _compare_hashes(expected, digest)
+        mismatches, percent = _hamming_distance(expected, digest)
         if match:
-            window.after(0, lambda: show_message("PASS — hash corrisponde", color="green"))
+            window.after(0, lambda: show_message(f"PASS — hash corrisponde ({percent:.2f}% match)", color="green"))
         else:
             idx = _first_mismatch_index(expected, digest)
             snippet_exp = expected[idx:idx+8]
             snippet_act = digest[idx:idx+8]
-            window.after(0, lambda i=idx, se=snippet_exp, sa=snippet_act: show_message(f"FAIL — mismatch at {i}: expected {se} != actual {sa}", color="red"))
+            window.after(0, lambda i=idx, se=snippet_exp, sa=snippet_act, p=percent: show_message(f"FAIL — mismatch at {i}: expected {se} != actual {sa} ({p:.2f}% match)", color="red"))
+        ts = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+        entry = f"{ts} | FILE | {os.path.basename(file_path)} | {option.get()} | {'PASS' if match else 'FAIL'} | {percent:.2f}%"
+        window.after(0, lambda e=entry: _add_history_entry(e))
     except Exception as e:
         window.after(0, lambda: show_message("Error hashing file: " + str(e), color="red"))
     finally:
@@ -260,9 +270,12 @@ def _file_hash_worker(file_path, file_size, progress_bar, cancel_event):
                 eta_text = time.strftime('%H:%M:%S', time.gmtime(eta_seconds))
                 window.after(0, lambda stext=speed_text, et=eta_text: _update_progress_label(stext, et))
 
-        digest = hasher.hexdigest()
-        window.after(0, lambda d=digest, fp=file_path: hexdigest.set(d))
-        window.after(0, lambda: show_message("Calculated hash for: " + file_path))
+            digest = hasher.hexdigest()
+            window.after(0, lambda d=digest, fp=file_path: hexdigest.set(d))
+            window.after(0, lambda: show_message("Calculated hash for: " + file_path))
+            ts = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+            entry = f"{ts} | FILE-HASH | {os.path.basename(file_path)} | {option.get()} | HASHED"
+            window.after(0, lambda e=entry: _add_history_entry(e))
     except Exception as e:
         window.after(0, lambda: show_message("Error hashing file: " + str(e), color="red"))
     finally:
@@ -295,10 +308,61 @@ def _first_mismatch_index(expected: str, actual: str) -> int:
     return min(len(exp), len(act))
 
 
+def _hamming_distance(expected: str, actual: str) -> tuple:
+    exp = (expected or "").strip().lower()
+    act = (actual or "").strip().lower()
+    max_len = max(len(exp), len(act))
+    if max_len == 0:
+        return 0, 100.0
+    mismatches = 0
+    for i in range(max_len):
+        a = exp[i] if i < len(exp) else None
+        b = act[i] if i < len(act) else None
+        if a != b:
+            mismatches += 1
+    matches = max_len - mismatches
+    percent = (matches / max_len) * 100.0
+    return mismatches, percent
+
+
+def _disable_main_buttons(disable: bool):
+    state = "disabled" if disable else "normal"
+    widgets = [
+        globals().get('hash_button'),
+        globals().get('copy_button'),
+        globals().get('file_button'),
+        globals().get('save_button'),
+        globals().get('verify_button'),
+        globals().get('clear_button')
+    ]
+    for w in widgets:
+        try:
+            if w:
+                w.config(state=state)
+        except Exception:
+            pass
+
+
+def _add_history_entry(entry: str, max_entries: int = 50):
+    global history_entries, history_listbox, history_frame
+    history_entries.insert(0, entry)
+    if len(history_entries) > max_entries:
+        history_entries = history_entries[:max_entries]
+    if history_listbox is None:
+        return
+    try:
+        history_listbox.delete(0, tkinter.END)
+        for e in history_entries:
+            history_listbox.insert(tkinter.END, e)
+    except Exception:
+        pass
+
+
 def cancel_file_hash():
     global file_hash_cancel
     if file_hash_cancel:
         file_hash_cancel.set()
+        _add_history_entry(f"CANCELED | {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}")
 
 
 
@@ -328,6 +392,7 @@ def _destroy_file_progress_widgets():
     file_cancel_button = None
     file_progress_label = None
     file_progress_frame = None
+    _disable_main_buttons(False)
 
 def save_to_file():
     file_path = tkinter.filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Text files", "*.txt")])
@@ -407,8 +472,26 @@ entry.grid(row=2, column=0, columnspan=2, pady=10)
 clear_button = tkinter.Button(window, text="Clear", command=clear_field, font=button_font, bg="#f4b084", fg="#F5F5F5")
 clear_button.grid(row=3, column=0, columnspan=2, pady=10)
 
+hash_button = tkinter.Button(window, text="Hash", command=hash, font=button_font, bg="#4caf50", fg="#F5F5F5")
+hash_button.grid(row=4, column=0, padx=50, pady=10, sticky="e")
+
+check_auto_update()
+check = tkinter.Checkbutton(window, text="Auto Update", variable=auto_update, command=check_auto_update, font=label_font, bg="#333333")
+check.grid(row=4, column=1, padx=10, pady=10, sticky="w")
+
+label = tkinter.Message(text="", textvariable=hexdigest, width=900, justify="center", font=("Arial", 12), fg="#F5F5F5", bg="#333333")
+label.grid(row=5, column=0, columnspan=2, pady=10)
+
+algorithms = ['blake2b', 'blake2s', 'md5', 'sha1', 'sha224', 'sha256', 'sha384', 'sha3_224', 'sha3_256', 'sha3_384', 'sha3_512', 'sha512']
+menu = tkinter.OptionMenu(window, option, *algorithms)
+menu.config(font=label_font, bg="#333333", fg="#F5F5F5")
+menu.grid(row=6, column=0, columnspan=2, pady=10)
+
+copy_button = tkinter.Button(window, text="Copy to Clipboard", command=copy, font=button_font, bg="#2196f3", fg="#F5F5F5")
+copy_button.grid(row=7, column=0, columnspan=2, pady=10)
+
 verify_frame = tkinter.Frame(window, bg="#333333")
-verify_frame.grid(row=4, column=0, columnspan=2, pady=6)
+verify_frame.grid(row=8, column=0, columnspan=2, pady=6)
 
 verify_label = tkinter.Label(verify_frame, text="Expected hash:", font=label_font, bg="#333333", fg="#F5F5F5")
 verify_label.pack(side="left", padx=(0,8))
@@ -419,29 +502,19 @@ verify_entry.pack(side="left", padx=(0,8))
 verify_button = tkinter.Button(verify_frame, text="Verify", command=verify, font=button_font, bg="#ff9800", fg="#333333")
 verify_button.pack(side="left", padx=(0,8))
 
-hash_button = tkinter.Button(window, text="Hash", command=hash, font=button_font, bg="#4caf50", fg="#F5F5F5")
-hash_button.grid(row=5, column=0, padx=50, pady=10, sticky="e")
-
-check_auto_update()
-check = tkinter.Checkbutton(window, text="Auto Update", variable=auto_update, command=check_auto_update, font=label_font, bg="#333333")
-check.grid(row=5, column=1, padx=10, pady=10, sticky="w")
-
-label = tkinter.Message(text="", textvariable=hexdigest, width=900, justify="center", font=("Arial", 12), fg="#F5F5F5", bg="#333333")
-label.grid(row=6, column=0, columnspan=2, pady=10)
-
-algorithms = ['blake2b', 'blake2s', 'md5', 'sha1', 'sha224', 'sha256', 'sha384', 'sha3_224', 'sha3_256', 'sha3_384', 'sha3_512', 'sha512']
-menu = tkinter.OptionMenu(window, option, *algorithms)
-menu.config(font=label_font, bg="#333333", fg="#F5F5F5")
-menu.grid(row=7, column=0, columnspan=2, pady=10)
-
-copy_button = tkinter.Button(window, text="Copy to Clipboard", command=copy, font=button_font, bg="#2196f3", fg="#F5F5F5")
-copy_button.grid(row=8, column=0, columnspan=2, pady=10)
-
 file_button = tkinter.Button(window, text="Hash File", command=start_file_hash, font=button_font, bg="#2196f3", fg="#F5F5F5")
-file_button.grid(row=9, column=0, padx=50, pady=10, sticky="e")
+file_button.grid(row=10, column=0, padx=50, pady=10, sticky="e")
 
 save_button = tkinter.Button(window, text="Save to File", command=save_to_file, font=button_font, bg="#2196f3", fg="#F5F5F5")
-save_button.grid(row=9, column=1, padx=10, pady=10, sticky="w")
+save_button.grid(row=10, column=1, padx=10, pady=10, sticky="w")
+
+
+history_frame = tkinter.Frame(window, bg="#333333")
+history_frame.grid(row=13, column=0, columnspan=2, pady=(10,0), padx=20, sticky="ew")
+history_label = tkinter.Label(history_frame, text="History (latest first):", font=label_font, bg="#333333", fg="#F5F5F5")
+history_label.pack(anchor="w")
+history_listbox = tkinter.Listbox(history_frame, height=6, bg="#4e4e4e", fg="#F5F5F5", width=120)
+history_listbox.pack(fill="both", expand=True, pady=(5,0))
 
 window.mainloop()
 
