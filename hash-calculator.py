@@ -11,6 +11,7 @@ option = tkinter.StringVar(value="blake2b")
 string = tkinter.StringVar()
 auto_update = tkinter.BooleanVar(value=True)
 hexdigest = tkinter.StringVar()
+expected_hash = tkinter.StringVar()
 
 title_font = ("Roboto", 25, "bold")
 label_font = ("Roboto", 12)
@@ -76,7 +77,7 @@ def start_file_hash():
         except Exception:
             pass
     file_progress_frame = tkinter.Frame(window, bg="#333333")
-    file_progress_frame.grid(row=11, column=0, columnspan=2, pady=10)
+    file_progress_frame.grid(row=14, column=0, columnspan=2, pady=10)
 
     file_progress_bar = tkinter.ttk.Progressbar(file_progress_frame, orient="horizontal", length=600, mode="determinate")
     file_progress_bar.pack(side="left", padx=(10, 10))
@@ -95,13 +96,137 @@ def start_file_hash():
         except Exception:
             pass
     file_progress_label = tkinter.Label(window, text="", font=message_font, bg="#333333")
-    file_progress_label.grid(row=12, column=0, columnspan=2, pady=(0, 10))
+    file_progress_label.grid(row=15, column=0, columnspan=2, pady=(0, 10))
 
     file_hash_cancel = threading.Event()
 
     file_hash_start_time = time.time()
     file_hash_thread = threading.Thread(target=_file_hash_worker, args=(file_path, file_size, file_progress_bar, file_hash_cancel), daemon=True)
     file_hash_thread.start()
+
+
+def verify():
+    expected = expected_hash.get().strip().lower()
+    if not expected:
+        show_message("Enter expected hash", color="red")
+        return
+
+    if string.get().strip():
+        try:
+            hasher = hashlib.new(option.get())
+        except Exception as e:
+            show_message("Unsupported algorithm: " + str(e), color="red")
+            return
+        hasher.update(string.get().encode())
+        actual = hasher.hexdigest().lower().strip()
+        hexdigest.set(actual)
+        if _compare_hashes(expected, actual):
+            show_message("PASS — hash is equal", color="green")
+        else:
+            idx = _first_mismatch_index(expected, actual)
+            snippet_exp = expected[idx:idx+8]
+            snippet_act = actual[idx:idx+8]
+            show_message(f"FAIL — mismatch at {idx}: expected {snippet_exp} != actual {snippet_act}", color="red")
+        return
+
+    start_file_verify(expected)
+
+
+def start_file_verify(expected):
+    global file_hash_thread, file_hash_cancel, file_progress_bar, file_cancel_button, file_progress_frame, file_progress_label, file_hash_start_time
+    file_path = tkinter.filedialog.askopenfilename()
+    if not file_path:
+        return
+
+    if file_hash_thread and file_hash_thread.is_alive():
+        show_message("A file hashing job is already running", color="red")
+        return
+
+    try:
+        file_size = os.path.getsize(file_path)
+    except Exception as e:
+        show_message("Error accessing file: " + str(e), color="red")
+        return
+
+
+    if file_progress_frame:
+        try:
+            file_progress_frame.destroy()
+        except Exception:
+            pass
+    file_progress_frame = tkinter.Frame(window, bg="#333333")
+    file_progress_frame.grid(row=14, column=0, columnspan=2, pady=10)
+
+    file_progress_bar = tkinter.ttk.Progressbar(file_progress_frame, orient="horizontal", length=600, mode="determinate")
+    file_progress_bar.pack(side="left", padx=(10, 10))
+
+    if file_cancel_button:
+        try:
+            file_cancel_button.destroy()
+        except Exception:
+            pass
+    file_cancel_button = tkinter.Button(file_progress_frame, text="Cancel", command=lambda: cancel_file_hash(), font=button_font, bg="#f44336", fg="white")
+    file_cancel_button.pack(side="left", padx=(10, 10))
+
+    if file_progress_label:
+        try:
+            file_progress_label.destroy()
+        except Exception:
+            pass
+    file_progress_label = tkinter.Label(window, text="", font=message_font, bg="#333333")
+    file_progress_label.grid(row=15, column=0, columnspan=2, pady=(0, 10))
+
+    file_hash_cancel = threading.Event()
+
+    file_hash_start_time = time.time()
+    file_hash_thread = threading.Thread(target=_file_verify_worker, args=(file_path, file_size, file_progress_bar, file_hash_cancel, expected), daemon=True)
+    file_hash_thread.start()
+
+
+def _file_verify_worker(file_path, file_size, progress_bar, cancel_event, expected):
+    try:
+        hasher = hashlib.new(option.get())
+    except Exception as e:
+        window.after(0, lambda: show_message("Unsupported algorithm: " + str(e), color="red"))
+        return
+
+    try:
+        with open(file_path, "rb") as f:
+            chunk_size = 64 * 1024
+            read_bytes = 0
+            while True:
+                if cancel_event.is_set():
+                    window.after(0, lambda: show_message("Hashing canceled", color="red"))
+                    window.after(0, lambda: _destroy_file_progress_widgets())
+                    return
+                chunk = f.read(chunk_size)
+                if not chunk:
+                    break
+                hasher.update(chunk)
+                read_bytes += len(chunk)
+                window.after(0, lambda rb=read_bytes, fs=file_size, pb=progress_bar: update_progress(pb, rb, fs))
+                elapsed = max(1e-6, time.time() - file_hash_start_time)
+                speed = read_bytes / elapsed  # bytes/sec
+                remaining = max(0, file_size - read_bytes)
+                eta_seconds = int(remaining / max(1e-6, speed))
+                speed_text = f"{speed / (1024*1024):.2f} MB/s"
+                eta_text = time.strftime('%H:%M:%S', time.gmtime(eta_seconds))
+                window.after(0, lambda stext=speed_text, et=eta_text: _update_progress_label(stext, et))
+
+        digest = hasher.hexdigest().lower().strip()
+        window.after(0, lambda d=digest: hexdigest.set(d))
+        match = _compare_hashes(expected, digest)
+        if match:
+            window.after(0, lambda: show_message("PASS — hash corrisponde", color="green"))
+        else:
+            idx = _first_mismatch_index(expected, digest)
+            snippet_exp = expected[idx:idx+8]
+            snippet_act = digest[idx:idx+8]
+            window.after(0, lambda i=idx, se=snippet_exp, sa=snippet_act: show_message(f"FAIL — mismatch at {i}: expected {se} != actual {sa}", color="red"))
+    except Exception as e:
+        window.after(0, lambda: show_message("Error hashing file: " + str(e), color="red"))
+    finally:
+        window.after(1000, lambda: _destroy_file_progress_widgets())
 
 
 def _file_hash_worker(file_path, file_size, progress_bar, cancel_event):
@@ -151,6 +276,23 @@ def _update_progress_label(speed_text, eta_text):
             file_progress_label.config(text=f"{speed_text} — ETA: {eta_text}", fg="#F5F5F5")
     except Exception:
         pass
+
+
+def _compare_hashes(expected: str, actual: str) -> bool:
+    if expected is None or actual is None:
+        return False
+    exp = expected.strip().lower()
+    act = actual.strip().lower()
+    return exp == act
+
+
+def _first_mismatch_index(expected: str, actual: str) -> int:
+    exp = (expected or "").strip().lower()
+    act = (actual or "").strip().lower()
+    for i, (a, b) in enumerate(zip(exp, act)):
+        if a != b:
+            return i
+    return min(len(exp), len(act))
 
 
 def cancel_file_hash():
@@ -264,6 +406,18 @@ entry.grid(row=2, column=0, columnspan=2, pady=10)
 
 clear_button = tkinter.Button(window, text="Clear", command=clear_field, font=button_font, bg="#f4b084", fg="#F5F5F5")
 clear_button.grid(row=3, column=0, columnspan=2, pady=10)
+
+verify_frame = tkinter.Frame(window, bg="#333333")
+verify_frame.grid(row=4, column=0, columnspan=2, pady=6)
+
+verify_label = tkinter.Label(verify_frame, text="Expected hash:", font=label_font, bg="#333333", fg="#F5F5F5")
+verify_label.pack(side="left", padx=(0,8))
+
+verify_entry = tkinter.Entry(verify_frame, textvariable=expected_hash, width=74, justify="center", font=("Roboto", 11), bg="#4e4e4e", fg="#F5F5F5")
+verify_entry.pack(side="left", padx=(0,8))
+
+verify_button = tkinter.Button(verify_frame, text="Verify", command=verify, font=button_font, bg="#ff9800", fg="#333333")
+verify_button.pack(side="left", padx=(0,8))
 
 hash_button = tkinter.Button(window, text="Hash", command=hash, font=button_font, bg="#4caf50", fg="#F5F5F5")
 hash_button.grid(row=5, column=0, padx=50, pady=10, sticky="e")
