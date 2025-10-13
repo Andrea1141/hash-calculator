@@ -18,6 +18,45 @@ label_font = ("Roboto", 12)
 button_font = ("Roboto", 10)
 message_font = ("Roboto", 12, "italic")
 
+
+class Tooltip:
+    def __init__(self, widget, text, delay=500):
+        self.widget = widget
+        self.text = text
+        self.delay = delay
+        self._id = None
+        self.tipwindow = None
+        widget.bind("<Enter>", self.schedule)
+        widget.bind("<Leave>", self.hide)
+
+    def schedule(self, _e=None):
+        self._id = self.widget.after(self.delay, self.show)
+
+    def show(self):
+        if self.tipwindow:
+            return
+        x = self.widget.winfo_rootx() + 20
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 1
+        self.tipwindow = tw = tkinter.Toplevel(self.widget)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry(f"+{x}+{y}")
+        label = tkinter.Label(tw, text=self.text, justify="left", background="#ffffe0", relief="solid", borderwidth=1, font=("Arial", 9))
+        label.pack(ipadx=4)
+
+    def hide(self, _e=None):
+        if self._id:
+            try:
+                self.widget.after_cancel(self._id)
+            except Exception:
+                pass
+            self._id = None
+        if self.tipwindow:
+            try:
+                self.tipwindow.destroy()
+            except Exception:
+                pass
+            self.tipwindow = None
+
 message_label = None
 file_hash_thread = None
 file_hash_cancel = None
@@ -73,7 +112,6 @@ def start_file_hash():
         show_message("Error accessing file: " + str(e), color="red")
         return
 
-    # Create (or recreate) a centered progress frame that spans both columns
     global file_progress_frame, file_progress_label, file_hash_start_time
     if file_progress_frame:
         try:
@@ -504,6 +542,8 @@ verify_entry.pack(side="left", padx=(0,8))
 
 verify_button = tkinter.Button(verify_frame, text="Verify", command=verify, font=button_font, bg="#ff9800", fg="#333333")
 verify_button.pack(side="left", padx=(0,8))
+paste_expected_button = tkinter.Button(verify_frame, text="Paste", command=lambda: expected_hash.set(window.clipboard_get()), font=("Roboto",9), bg="#757575", fg="#F5F5F5")
+paste_expected_button.pack(side="left", padx=(0,4))
 
 file_button = tkinter.Button(window, text="Hash File", command=start_file_hash, font=button_font, bg="#2196f3", fg="#F5F5F5")
 file_button.grid(row=10, column=0, padx=50, pady=10, sticky="e")
@@ -511,6 +551,35 @@ file_button.grid(row=10, column=0, padx=50, pady=10, sticky="e")
 save_button = tkinter.Button(window, text="Save to File", command=save_to_file, font=button_font, bg="#2196f3", fg="#F5F5F5")
 save_button.grid(row=10, column=1, padx=10, pady=10, sticky="w")
 
+menubar = tkinter.Menu(window)
+filemenu = tkinter.Menu(menubar, tearoff=0)
+filemenu.add_command(label="Hash Text", command=hash, accelerator="Ctrl+H")
+filemenu.add_command(label="Verify", command=verify, accelerator="Ctrl+Y")
+filemenu.add_command(label="Hash File", command=start_file_hash, accelerator="Ctrl+F")
+filemenu.add_command(label="Save", command=save_to_file, accelerator="Ctrl+S")
+filemenu.add_separator()
+filemenu.add_command(label="Exit", command=window.quit)
+menubar.add_cascade(label="File", menu=filemenu)
+window.config(menu=menubar)
+
+window.bind_all('<Control-h>', lambda e: hash())
+window.bind_all('<Control-H>', lambda e: hash())
+window.bind_all('<Control-v>', lambda e: verify())
+window.bind_all('<Control-V>', lambda e: verify())
+window.bind_all('<Control-f>', lambda e: start_file_hash())
+window.bind_all('<Control-F>', lambda e: start_file_hash())
+window.bind_all('<Control-s>', lambda e: save_to_file())
+window.bind_all('<Control-S>', lambda e: save_to_file())
+window.bind_all('<Control-c>', lambda e: copy())
+window.bind_all('<Control-C>', lambda e: copy())
+
+Tooltip(hash_button, "Compute hash of the input text (Ctrl+H)")
+Tooltip(verify_button, "Verify expected hash against input or file (Ctrl+V)")
+Tooltip(copy_button, "Copy the displayed hash to clipboard (Ctrl+C)")
+Tooltip(file_button, "Choose a file and compute its hash (Ctrl+F)")
+Tooltip(save_button, "Save the current hash to a text file (Ctrl+S)")
+
+entry.focus_set()
 
 history_frame = tkinter.Frame(window, bg="#333333")
 history_frame.grid(row=13, column=0, columnspan=2, pady=(10,0), padx=20, sticky="ew")
