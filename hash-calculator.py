@@ -3,7 +3,7 @@ import tkinter, tkinter.messagebox, tkinter.filedialog, tkinter.ttk, hashlib, os
 window = tkinter.Tk()
 window.title("Hash Calculator")
 window.geometry("1000x700")
-window.config(bg="#f0f0f0")
+window.config(bg="#333333")
 window.columnconfigure(0, weight=1)
 window.columnconfigure(1, weight=1)
 
@@ -15,7 +15,7 @@ hexdigest = tkinter.StringVar()
 title_font = ("Roboto", 25, "bold")
 label_font = ("Roboto", 12)
 button_font = ("Roboto", 10)
-message_font = ("Roboto", 10, "italic")
+message_font = ("Roboto", 12, "italic")
 
 message_label = None
 file_hash_thread = None
@@ -75,7 +75,7 @@ def start_file_hash():
             file_progress_frame.destroy()
         except Exception:
             pass
-    file_progress_frame = tkinter.Frame(window, bg="#f0f0f0")
+    file_progress_frame = tkinter.Frame(window, bg="#333333")
     file_progress_frame.grid(row=11, column=0, columnspan=2, pady=10)
 
     file_progress_bar = tkinter.ttk.Progressbar(file_progress_frame, orient="horizontal", length=600, mode="determinate")
@@ -94,7 +94,7 @@ def start_file_hash():
             file_progress_label.destroy()
         except Exception:
             pass
-    file_progress_label = tkinter.Label(window, text="", font=message_font, bg="#f0f0f0")
+    file_progress_label = tkinter.Label(window, text="", font=message_font, bg="#333333")
     file_progress_label.grid(row=12, column=0, columnspan=2, pady=(0, 10))
 
     file_hash_cancel = threading.Event()
@@ -148,7 +148,7 @@ def _update_progress_label(speed_text, eta_text):
     global file_progress_label
     try:
         if file_progress_label:
-            file_progress_label.config(text=f"{speed_text} — ETA: {eta_text}")
+            file_progress_label.config(text=f"{speed_text} — ETA: {eta_text}", fg="#F5F5F5")
     except Exception:
         pass
 
@@ -244,7 +244,7 @@ def show_message(msg, color="green"):
     global message_label
     if message_label:
         message_label.destroy()
-    message_label = tkinter.Label(window, text=msg, fg=color, bg="#f0f0f0", font=message_font)
+    message_label = tkinter.Label(window, text=msg, fg=color, bg="#333333", font=message_font)
     message_label.grid(row=14, column=0, columnspan=2, pady=5)
     window.after(3000, lambda: message_label.destroy())
 
@@ -253,40 +253,40 @@ def update_progress(progress_bar, current, total):
     progress_bar["value"] = percentage
     window.update_idletasks()
 
-title = tkinter.Label(text="HASH CALCULATOR", font=title_font, bg="#f0f0f0")
+title = tkinter.Label(text="HASH CALCULATOR", font=title_font, bg="#333333", fg="#F5F5F5")
 title.grid(row=0, column=0, columnspan=2, pady=20)
 
-label = tkinter.Label(text="Write the string to hash", font=label_font, bg="#f0f0f0")
+label = tkinter.Label(text="Write the string to hash", font=label_font, bg="#333333", fg="#F5F5F5")
 label.grid(row=1, column=0, columnspan=2, pady=10)
 
-entry = tkinter.Entry(window, textvariable=string, width=100, justify="center", font=("Roboto", 12))
+entry = tkinter.Entry(window, textvariable=string, width=100, justify="center", font=("Roboto", 12), bg="#4e4e4e", fg="#F5F5F5")
 entry.grid(row=2, column=0, columnspan=2, pady=10)
 
-clear_button = tkinter.Button(window, text="Clear", command=clear_field, font=button_font, bg="#f4b084")
+clear_button = tkinter.Button(window, text="Clear", command=clear_field, font=button_font, bg="#f4b084", fg="#F5F5F5")
 clear_button.grid(row=3, column=0, columnspan=2, pady=10)
 
-hash_button = tkinter.Button(window, text="Hash", command=hash, font=button_font, bg="#4caf50", fg="white")
+hash_button = tkinter.Button(window, text="Hash", command=hash, font=button_font, bg="#4caf50", fg="#F5F5F5")
 hash_button.grid(row=5, column=0, padx=50, pady=10, sticky="e")
 
 check_auto_update()
-check = tkinter.Checkbutton(window, text="Auto Update", variable=auto_update, command=check_auto_update, font=label_font, bg="#f0f0f0")
+check = tkinter.Checkbutton(window, text="Auto Update", variable=auto_update, command=check_auto_update, font=label_font, bg="#333333")
 check.grid(row=5, column=1, padx=10, pady=10, sticky="w")
 
-label = tkinter.Message(text="", textvariable=hexdigest, width=900, justify="center", font=("Arial", 12))
+label = tkinter.Message(text="", textvariable=hexdigest, width=900, justify="center", font=("Arial", 12), fg="#F5F5F5", bg="#333333")
 label.grid(row=6, column=0, columnspan=2, pady=10)
 
 algorithms = ['blake2b', 'blake2s', 'md5', 'sha1', 'sha224', 'sha256', 'sha384', 'sha3_224', 'sha3_256', 'sha3_384', 'sha3_512', 'sha512']
 menu = tkinter.OptionMenu(window, option, *algorithms)
-menu.config(font=label_font, bg="#f0f0f0")
+menu.config(font=label_font, bg="#333333", fg="#F5F5F5")
 menu.grid(row=7, column=0, columnspan=2, pady=10)
 
-copy_button = tkinter.Button(window, text="Copy to Clipboard", command=copy, font=button_font, bg="#2196f3", fg="white")
+copy_button = tkinter.Button(window, text="Copy to Clipboard", command=copy, font=button_font, bg="#2196f3", fg="#F5F5F5")
 copy_button.grid(row=8, column=0, columnspan=2, pady=10)
 
-file_button = tkinter.Button(window, text="Hash File", command=start_file_hash, font=button_font, bg="#2196f3", fg="white")
+file_button = tkinter.Button(window, text="Hash File", command=start_file_hash, font=button_font, bg="#2196f3", fg="#F5F5F5")
 file_button.grid(row=9, column=0, padx=50, pady=10, sticky="e")
 
-save_button = tkinter.Button(window, text="Save to File", command=save_to_file, font=button_font, bg="#2196f3", fg="white")
+save_button = tkinter.Button(window, text="Save to File", command=save_to_file, font=button_font, bg="#2196f3", fg="#F5F5F5")
 save_button.grid(row=9, column=1, padx=10, pady=10, sticky="w")
 
 window.mainloop()
