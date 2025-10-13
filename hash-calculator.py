@@ -126,11 +126,14 @@ def verify():
         hexdigest.set(actual)
         if _compare_hashes(expected, actual):
             show_message("PASS — hash is equal", color="green")
+            _add_history_entry(f"{time.strftime('%Y-%m-%d %H:%M:%S')} | TEXT | {option.get()} | PASS | 100.00%")
         else:
             idx = _first_mismatch_index(expected, actual)
             snippet_exp = expected[idx:idx+8]
             snippet_act = actual[idx:idx+8]
             show_message(f"FAIL — mismatch at {idx}: expected {snippet_exp} != actual {snippet_act}", color="red")
+            mismatches, percent = _hamming_distance(expected, actual)
+            _add_history_entry(f"{time.strftime('%Y-%m-%d %H:%M:%S')} | TEXT | {option.get()} | FAIL | {percent:.2f}%")
         return
 
     start_file_verify(expected)
@@ -347,7 +350,7 @@ def _add_history_entry(entry: str, max_entries: int = 50):
     global history_entries, history_listbox, history_frame
     history_entries.insert(0, entry)
     if len(history_entries) > max_entries:
-        history_entries = history_entries[:max_entries]
+        del history_entries[max_entries:]
     if history_listbox is None:
         return
     try:
